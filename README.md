@@ -39,7 +39,7 @@ This DSS follows the **classical four-subsystem architecture**:
 For a detailed breakdown of the code architecture, data flow, and technical
 explanations of the models:
 
-- [Code Flow Documentation](docs/code_flow.md) — full technical overview of
+- [Code Flow Documentation](code_flow.md) — full technical overview of
   data preparation, LSTM & ANFIS model design, prediction workflow, and output
   generation.
 
