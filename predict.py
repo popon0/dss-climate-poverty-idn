@@ -105,7 +105,7 @@ def get_scaled_base_dataframe(
     return df_base[["province_id", "province", "year", "emisi_bersih_scaled", "poverty_scaled"]]
 
 
-def build_last_sequence(df_base: pd.DataFrame, pid: int, seq_len: int = 3) -> tuple[np.ndarray | None, str | None]:
+def build_last_sequence(df_base: pd.DataFrame, pid: int, seq_len=3):
     """
     Build the last sequence of scaled values for a given province.
 
@@ -118,11 +118,17 @@ def build_last_sequence(df_base: pd.DataFrame, pid: int, seq_len: int = 3) -> tu
         (last_seq, province_name) or (None, None) if insufficient data
     """
     sub = df_base[df_base["province_id"] == pid].sort_values("year")
+    if sub.empty:
+        return None, None
+    
     values = sub[["emisi_bersih_scaled", "poverty_scaled"]].values
     if len(values) < seq_len:
-        return None, None
+        return None, sub["province"].iloc[0] if "province" in sub.columns else None
+    
     last_seq = values[-seq_len:]
-    province_name = sub["province"].values[0]
+    province_name = sub["province"].iloc[0] if "province" in sub.columns else None
+    return last_seq, province_name
+
 
 def inverse_scale(pred_e: float, pred_p: float, minmax: tuple[float, float, float, float]) -> tuple[float, float]:
     """Inverse scale predictions back to original units."""
