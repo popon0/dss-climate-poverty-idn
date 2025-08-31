@@ -136,6 +136,6 @@ This work contributes to:
 If you use this project in academic work, please cite using the `CITATION.cff` file.
 
 ## 📜 License
-This project is released under the **MIT License**. See [LICENSE](LICENSE) for details.  
+This project is released under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.  
 
 ---
