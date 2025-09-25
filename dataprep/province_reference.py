@@ -1,18 +1,34 @@
 """
 province_reference.py
 
-Mapping utilities for Indonesian provinces using official BPS codes.
+Indonesian Provincial Administrative Code Reference System.
 
-Includes:
-- province_code_map: dict {province_name -> province_code}
-- get_province_code(): fetch code by province name
-- get_province_name_by_code(): fetch name by province code
+This module provides comprehensive mapping utilities for Indonesian provincial
+administrative divisions using the official Statistical Central Bureau (BPS)
+standardized coding system. The reference system ensures consistent provincial
+identification across different datasets and analytical workflows.
+
+Key Components:
+    - INDONESIAN_PROVINCE_CODES: Official BPS province code mapping dictionary
+    - get_province_code(): Province name to code lookup function  
+    - get_province_name(): Province code to name reverse lookup function
+
+Standards Compliance:
+    - Follows official BPS (Badan Pusat Statistik) provincial coding standards
+    - Maintains compatibility with government statistical databases
+    - Supports both forward and reverse lookups for data integration
+
+Dependencies:
+    - No external dependencies (pure Python implementation)
+
+Author: Teuku Hafiez Ramadhan
+License: Apache License 2.0
 """
 
 from __future__ import annotations
 
-# === Official province code map (BPS standard) ===
-province_code_map: dict[str, int] = {
+# === Official Indonesian Province Code Registry (BPS Standard) ===
+INDONESIAN_PROVINCE_CODES: dict[str, int] = {
     "Aceh": 11,
     "Sumatra Utara": 12,
     "Sumatra Barat": 13,
@@ -49,31 +65,59 @@ province_code_map: dict[str, int] = {
     "Papua Barat": 92,
 }
 
-# Reverse lookup (code -> name)
-province_name_map: dict[int, str] = {v: k for k, v in province_code_map.items()}
+# Generate reverse lookup mapping for bidirectional access
+INDONESIAN_PROVINCE_NAMES: dict[int, str] = {code: name for name, code in INDONESIAN_PROVINCE_CODES.items()}
 
 
-def get_province_code(name: str) -> int | None:
+def get_province_code(province_name: str) -> int | None:
     """
-    Get official BPS province code from province name.
-
+    Retrieve the official BPS administrative code for a given Indonesian province name.
+    
+    This function provides a standardized lookup mechanism for converting province
+    names to their corresponding official statistical codes, ensuring consistency
+    across data integration and analysis workflows.
+    
     Args:
-        name (str): Province name (e.g., "Jawa Barat")
-
+        province_name (str): Full Indonesian province name (e.g., "Jawa Barat", "DKI Jakarta")
+        
     Returns:
-        int | None: Province code if found, else None
+        int | None: Official BPS province code if the province name is found,
+                   None if the province name is not recognized
+                   
+    Example:
+        >>> code = get_province_code("Jawa Barat")
+        >>> print(f"Province code for Jawa Barat: {code}")
+        Province code for Jawa Barat: 32
+        
+    Note:
+        Province names must match exactly with the official BPS naming conventions
+        stored in the INDONESIAN_PROVINCE_CODES registry.
     """
-    return province_code_map.get(name)
+    return INDONESIAN_PROVINCE_CODES.get(province_name)
 
 
-def get_province_name_by_code(code: int) -> str | None:
+def get_province_name(province_code: int) -> str | None:
     """
-    Get province name from official BPS code.
-
+    Retrieve the official Indonesian province name from its BPS administrative code.
+    
+    This function provides reverse lookup functionality, converting numerical
+    province codes back to their corresponding full province names for reporting
+    and visualization purposes.
+    
     Args:
-        code (int): Province code (e.g., 32)
-
+        province_code (int): Official BPS province code (e.g., 32 for Jawa Barat)
+        
     Returns:
-        str | None: Province name if found, else None
+        str | None: Full Indonesian province name if the code is valid,
+                   None if the province code is not recognized
+                   
+    Example:
+        >>> name = get_province_name(32)
+        >>> print(f"Province name for code 32: {name}")
+        Province name for code 32: Jawa Barat
+        
+    Note:
+        This function serves as the inverse operation to get_province_code(),
+        enabling bidirectional conversion between names and codes.
     """
-    return province_name_map.get(code)
+    return INDONESIAN_PROVINCE_NAMES.get(province_code)

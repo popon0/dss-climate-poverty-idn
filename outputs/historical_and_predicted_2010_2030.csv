@@ -1,4 +1,4 @@
-province_code,province,province_id,year,Emisi (Ton),Kemiskinan (%),Skor Pajak,Tarif Pajak,Tarif Pajak (Rp/Ton),Penerimaan Negara (Rp),Penerimaan Negara (T),Total Nasional (T),Kontribusi (%)
+province_code,province,province_id,year,Emissions_Tons,Poverty_Rate_Percent,Tax_Score,Tax_Rate,Tax_Rate_Rp_Per_Ton,Government_Revenue_Rp,Government_Revenue_Trillions,National_Total_Trillions,Contribution_Percent
 11,Aceh,11,2010,10501580.0,20.98,0.1993013620376587,30.0,30000.0,315047400000.0,0.3150474,78.1124105928088,0.4033256656772592
 11,Aceh,11,2011,10410990.0,19.57,0.21879354119300842,32.81903076171875,32819.03076171875,341678601069.9463,0.3416786010699463,103.47364981626575,0.33020832035658554
 11,Aceh,11,2012,5632650.0,19.02,0.2223309427499771,33.349639892578125,33349.639892578125,187846849140.93018,0.18784684914093017,78.72615407483158,0.23860793321921464

@@ -36,7 +36,7 @@ class LSTMForecast(nn.Module):
     LSTM-based forecaster for emission & poverty.
 
     - Input: sequence of shape (batch, seq_len, 2)
-    - Output: next timestep prediction (emission_scaled, poverty_scaled)
+    - Output: next timestep prediction (scaled_net_emissions, scaled_poverty_rate)
 
     Args:
         input_size (int): number of input features (default=2)
@@ -142,10 +142,10 @@ def evaluate_lstm_model(
 
     Returns:
         dict[str, float]: metrics
-            - mae_emisi
-            - mae_kemiskinan
-            - r2_emisi
-            - r2_kemiskinan
+            - mae_emissions
+            - mae_poverty
+            - r2_emissions
+            - r2_poverty
     """
     model.eval()
     with torch.no_grad():
@@ -153,8 +153,8 @@ def evaluate_lstm_model(
         y_true = y_val.numpy()
 
     return {
-        "mae_emisi": mean_absolute_error(y_true[:, 0], y_pred[:, 0]),
-        "mae_kemiskinan": mean_absolute_error(y_true[:, 1], y_pred[:, 1]),
-        "r2_emisi": r2_score(y_true[:, 0], y_pred[:, 0]),
-        "r2_kemiskinan": r2_score(y_true[:, 1], y_pred[:, 1]),
+        "mae_emissions": mean_absolute_error(y_true[:, 0], y_pred[:, 0]),
+        "mae_poverty": mean_absolute_error(y_true[:, 1], y_pred[:, 1]),
+        "r2_emissions": r2_score(y_true[:, 0], y_pred[:, 0]),
+        "r2_poverty": r2_score(y_true[:, 1], y_pred[:, 1]),
     }

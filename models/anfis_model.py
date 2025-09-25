@@ -54,7 +54,7 @@ class ANFIS(nn.Module):
     """
     Adaptive Neuro-Fuzzy Inference System (Sugeno-1).
 
-    - Two inputs: emission_scaled, poverty_scaled
+    - Two inputs: scaled_net_emissions, scaled_poverty_rate
     - Three Gaussian MFs per input (low, medium, high)
     - 3x3 = 9 fuzzy rules
     - Linear output layer combines rule firing strengths
@@ -63,10 +63,10 @@ class ANFIS(nn.Module):
     def __init__(self):
         super().__init__()
         # Membership functions
-        self.mf_emisi = nn.ModuleList(
+        self.mf_emissions = nn.ModuleList(
             [GaussianMF(0.2, 0.05), GaussianMF(0.5, 0.05), GaussianMF(0.8, 0.05)]
         )
-        self.mf_kemiskinan = nn.ModuleList(
+        self.mf_poverty = nn.ModuleList(
             [GaussianMF(0.2, 0.05), GaussianMF(0.5, 0.05), GaussianMF(0.8, 0.05)]
         )
 
@@ -79,13 +79,13 @@ class ANFIS(nn.Module):
             self.linear.bias.fill_(0.0)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        e, k = x[:, 0], x[:, 1]
+        e, p = x[:, 0], x[:, 1]
 
-        fe = torch.stack([mf(e) for mf in self.mf_emisi], dim=1)  # (N, 3)
-        fk = torch.stack([mf(k) for mf in self.mf_kemiskinan], dim=1)  # (N, 3)
+        fe = torch.stack([mf(e) for mf in self.mf_emissions], dim=1)  # (N, 3)
+        fp = torch.stack([mf(p) for mf in self.mf_poverty], dim=1)  # (N, 3)
 
         # Rule firing strengths: outer product → (N, 3, 3) → flatten → (N, 9)
-        rules = torch.bmm(fe.unsqueeze(2), fk.unsqueeze(1)).view(-1, 9)
+        rules = torch.bmm(fe.unsqueeze(2), fp.unsqueeze(1)).view(-1, 9)
 
         return self.linear(rules)
 

@@ -2,10 +2,23 @@
 preprocessor.py
 
 Data preprocessing utilities for the Decision Support System (DSS).
+            - "scaled_net_emissions": Normalized emission values  
+            - "scaled_poverty_rate": Normalized poverty rate valueshis module provides essential data transformation functions for preparing
+raw environmental and socioeconomic data for machine learning model training.
+The preprocessing pipeline ensures consistent data scaling and sequential 
+structuring required for time series forecasting models.
 
-Includes:
-- normalize(): scale raw emission & poverty data using min-max normalization
-- create_lstm_sequences(): build sequential data for LSTM training
+Key Functions:
+    - normalize_features(): Applies min-max normalization to emission and poverty data
+    - create_lstm_sequences(): Constructs sequential data structures for LSTM training
+    
+Dependencies:
+    - numpy: For numerical computations and array operations
+    - torch: For PyTorch tensor operations
+    - pandas: For structured data manipulation
+
+Author: Teuku Hafiez Ramadhan  
+License: Apache License 2.0
 """
 
 from __future__ import annotations
@@ -15,66 +28,104 @@ import torch
 import pandas as pd
 
 
-def normalize(
-    df: pd.DataFrame,
-    min_emisi: float,
-    max_emisi: float,
-    min_poverty: float,
-    max_poverty: float,
+def normalize_features(
+    dataframe: pd.DataFrame,
+    min_emissions: float,
+    max_emissions: float,
+    min_poverty_rate: float,
+    max_poverty_rate: float,
 ) -> pd.DataFrame:
     """
-    Apply min-max normalization to emission and poverty columns.
-
+    Apply min-max normalization to greenhouse gas emissions and poverty rate features.
+    
+    This function scales the raw environmental and socioeconomic indicators to a 
+    standardized range [0, 1], which is essential for optimal machine learning 
+    model performance and numerical stability during training.
+    
     Args:
-        df (pd.DataFrame): Input dataframe with raw columns
-            - "Emisi (Ton)"
-            - "Kemiskinan (%)"
-        min_emisi (float): Minimum emission in dataset
-        max_emisi (float): Maximum emission in dataset
-        min_poverty (float): Minimum poverty rate in dataset
-        max_poverty (float): Maximum poverty rate in dataset
-
+        dataframe (pd.DataFrame): Input dataset containing raw indicator columns:
+                    Expected input structure:
+            - "Emissions_Tons": Greenhouse gas emissions in tons
+            - "Poverty_Rate_Percent": Poverty rate as percentage
+        min_emissions (float): Historical minimum emission value for scaling reference
+        max_emissions (float): Historical maximum emission value for scaling reference  
+        min_poverty_rate (float): Historical minimum poverty rate for scaling reference
+        max_poverty_rate (float): Historical maximum poverty rate for scaling reference
+        
     Returns:
-        pd.DataFrame: DataFrame with two new columns
-            - emisi_bersih_scaled
-            - poverty_scaled
+        pd.DataFrame: Enhanced dataframe with normalized feature columns:
+            - scaled_net_emissions: Normalized emission values [0, 1]
+            - scaled_poverty_rate: Normalized poverty rate values [0, 1]    Note:
+        The original raw columns are preserved alongside the new scaled features
+        to maintain data traceability and support inverse transformations.
+        
+    Example:
+        >>> normalized_df = normalize_features(
+        ...     raw_df, min_e=1000, max_e=50000, min_p=2.5, max_p=15.8
+        ... )
+        >>> print(normalized_df[['scaled_net_emissions', 'scaled_poverty_rate']].describe())
     """
-    df["emisi_bersih_scaled"] = (
-        (df["Emisi (Ton)"] - min_emisi) / (max_emisi - min_emisi)
+    dataframe["scaled_net_emissions"] = (
+        (dataframe["Emissions_Tons"] - min_emissions) / (max_emissions - min_emissions)
     )
-    df["poverty_scaled"] = (
-        (df["Kemiskinan (%)"] - min_poverty) / (max_poverty - min_poverty)
+    dataframe["scaled_poverty_rate"] = (
+        (dataframe["Poverty_Rate_Percent"] - min_poverty_rate) / (max_poverty_rate - min_poverty_rate)
     )
-    return df
+    return dataframe
 
 
 def create_lstm_sequences(
-    df_sorted: pd.DataFrame, sequence_length: int = 3
+    sorted_dataframe: pd.DataFrame, sequence_length: int = 3
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Build sequences for LSTM training from normalized data.
-
+    Construct sequential data structures optimized for LSTM time series training.
+    
+    This function transforms the normalized provincial time series data into 
+    sliding window sequences suitable for supervised learning with LSTM networks.
+    Each sequence captures temporal dependencies in emission and poverty patterns.
+    
     Args:
-        df_sorted (pd.DataFrame): DataFrame sorted by [province_id, year]
-            - must contain "emisi_bersih_scaled" and "poverty_scaled"
-        sequence_length (int): Number of timesteps in each input sequence
-
+        sorted_dataframe (pd.DataFrame): Time-ordered dataset sorted by [province_id, year]
+            containing normalized feature columns:
+            - "emissions_scaled": Normalized emission values
+            - "poverty_scaled": Normalized poverty rate values  
+        sequence_length (int, optional): Number of historical timesteps per input sequence.
+            Defaults to 3, representing a 3-year lookback window.
+            
     Returns:
-        tuple:
-            - X (torch.Tensor): Shape (N, sequence_length, 2)
-            - y (torch.Tensor): Shape (N, 2)
+        tuple[torch.Tensor, torch.Tensor]: Training-ready tensor pair:
+            - input_sequences (torch.Tensor): Shape (N, sequence_length, 2) 
+              Input sequences for model training
+            - target_values (torch.Tensor): Shape (N, 2)
+              Target values for supervised learning
+              
+    Note:
+        The function processes each province independently to maintain temporal
+        coherence and prevent cross-provincial data leakage in the sequences.
+        
+    Example:
+        >>> X_train, y_train = create_lstm_sequences(
+        ...     normalized_provincial_data, sequence_length=3
+        ... )
+        >>> print(f"Input shape: {X_train.shape}, Target shape: {y_train.shape}")
+        Input shape: torch.Size([420, 3, 2]), Target shape: torch.Size([420, 2])
     """
-    X, y = [], []
+    input_sequences, target_values = [], []
 
-    for pid in df_sorted["province_id"].unique():
-        sub = df_sorted[df_sorted["province_id"] == pid]
-        values = sub[["emisi_bersih_scaled", "poverty_scaled"]].values
+    for province_id in sorted_dataframe["province_id"].unique():
+        provincial_subset = sorted_dataframe[sorted_dataframe["province_id"] == province_id]
+        feature_values = provincial_subset[["scaled_net_emissions", "scaled_poverty_rate"]].values
 
-        for i in range(len(values) - sequence_length):
-            X.append(values[i : i + sequence_length])
-            y.append(values[i + sequence_length])
+        # Create sliding window sequences for this province
+        for timestep in range(len(feature_values) - sequence_length):
+            sequence_input = feature_values[timestep : timestep + sequence_length]
+            sequence_target = feature_values[timestep + sequence_length]
+            
+            input_sequences.append(sequence_input)
+            target_values.append(sequence_target)
 
-    X_np = np.array(X, dtype=np.float32)
-    y_np = np.array(y, dtype=np.float32)
+    # Convert to numpy arrays and then to PyTorch tensors
+    input_array = np.array(input_sequences, dtype=np.float32)
+    target_array = np.array(target_values, dtype=np.float32)
 
-    return torch.from_numpy(X_np), torch.from_numpy(y_np)
+    return torch.from_numpy(input_array), torch.from_numpy(target_array)

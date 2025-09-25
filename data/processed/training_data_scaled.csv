@@ -1,4 +1,4 @@
-province,year,emisi_bersih_scaled,poverty_scaled,province_id
+province,year,scaled_net_emissions,scaled_poverty_rate,province_id
 Aceh,2010,0.023186978244524967,0.5257082896117524,11
 Aceh,2011,0.022986959927360166,0.4834357667516115,11
 Aceh,2012,0.012436617443186982,0.46694648478488987,11

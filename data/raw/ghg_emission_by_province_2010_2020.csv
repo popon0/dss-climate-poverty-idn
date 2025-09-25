@@ -1,4 +1,4 @@
-province_id,province,year,Emisi_Bersih_Ton,Emisi_Negatif
+province_id,province,year,Net_Emissions_Tons,Negative_Emissions
 11,Aceh,2010,10501580,0
 11,Aceh,2011,10410990,0
 11,Aceh,2012,5632650,0

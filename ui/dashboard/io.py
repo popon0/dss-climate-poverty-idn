@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 import pandas as pd
 import streamlit as st
-from config import DEFAULT_INPUT_CSV, LATEST_COMBINED_CSV
+from config import STATIC_DATASET_CSV, PREDICTED_COMBINED_CSV
 
 # Required columns for any dataset loaded into the dashboard
 REQUIRED_COLS = {
     "year", "province", "province_code",
-    "Emisi (Ton)", "Penerimaan Negara (T)",
-    "Kemiskinan (%)", "Tarif Pajak"
+    "Emissions_Tons", "Government_Revenue_Trillions",
+    "Poverty_Rate_Percent", "Tax_Rate"
 }
 
 
@@ -29,7 +29,7 @@ def load_data(path: str | None = None) -> pd.DataFrame:
         If required columns are missing from the dataset.
     """
     if path is None:
-        path = LATEST_COMBINED_CSV if os.path.exists(LATEST_COMBINED_CSV) else DEFAULT_INPUT_CSV
+        path = PREDICTED_COMBINED_CSV if os.path.exists(PREDICTED_COMBINED_CSV) else STATIC_DATASET_CSV
 
     df = pd.read_csv(path)
     missing = REQUIRED_COLS - set(df.columns)

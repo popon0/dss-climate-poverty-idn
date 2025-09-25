@@ -15,15 +15,41 @@
 """
 main.py
 
-Training pipeline for DSS models (LSTM & ANFIS).
+Comprehensive Training Pipeline for Decision Support System (DSS) Machine Learning Models.
 
-Modes:
-- from-raw: build dataset from raw CSVs (normalize + merge)
-- from-com: use preprocessed/computed dataset (scaled, normalized)
+This module orchestrates the complete model training workflow for the DSS project,
+implementing a dual-model architecture consisting of LSTM (Long Short-Term Memory)
+networks for time series forecasting and ANFIS (Adaptive Neuro-Fuzzy Inference
+System) for policy effectiveness prediction.
 
-Outputs:
-- Trained model artifacts (outputs/lstm_model.pt, outputs/anfis_model.pt)
-- Training summary metrics (outputs/training_summary.csv)
+Training Pipeline Architecture:
+    1. Data Loading & Preprocessing: Load and normalize raw environmental and 
+       socioeconomic datasets from multiple sources
+    2. Feature Engineering: Apply min-max normalization and create sequential 
+       data structures optimized for time series learning
+    3. LSTM Model Training: Train recurrent neural networks for emission and 
+       poverty trajectory forecasting
+    4. ANFIS Model Training: Train neuro-fuzzy systems for policy score prediction
+    5. Model Evaluation: Comprehensive performance assessment using multiple metrics
+    6. Artifact Persistence: Save trained models and performance summaries
+
+Training Modes:
+    - from-raw: Build complete dataset from raw CSV files with full preprocessing
+    - from-processed: Use pre-computed normalized dataset for expedited training
+
+Output Artifacts:
+    - Trained LSTM model parameters (outputs/lstm_model.pt)
+    - Trained ANFIS model parameters (outputs/anfis_model.pt)  
+    - Comprehensive training metrics summary (outputs/training_summary.csv)
+
+Dependencies:
+    - PyTorch: Deep learning framework for model implementation and training
+    - pandas: Structured data manipulation and analysis
+    - numpy: Numerical computing operations
+    - scikit-learn: Machine learning utilities and evaluation metrics
+
+Author: Teuku Hafiez Ramadhan
+License: Apache License 2.0
 """
 
 from __future__ import annotations
@@ -36,15 +62,15 @@ import pandas as pd
 import torch
 
 from config import (
-    LSTM_MODEL_PATH,
-    ANFIS_MODEL_PATH,
-    OUTPUT_DIR,
+    TRAINED_LSTM_MODEL_PATH,
+    TRAINED_ANFIS_MODEL_PATH,
+    MODEL_OUTPUT_DIR,
 )
 
-from dataprep.preprocessor import normalize, create_lstm_sequences
-from dataprep.target import calculate_policy_score
-from dataprep.province_reference import province_code_map  # optional if needed
-from config import load_csv_files
+from dataprep.preprocessor import normalize_features, create_lstm_sequences
+from dataprep.target import calculate_policy_effectiveness_score
+from dataprep.province_reference import INDONESIAN_PROVINCE_CODES  # optional if needed
+from config import load_dataset_files
 
 from models.lstm_model import (
     LSTMForecast,
@@ -54,175 +80,321 @@ from models.lstm_model import (
 from models.anfis_model import ANFIS, train_anfis_model
 
 
-# === Utilities ===
-def ensure_outputs_dir() -> None:
-    """Ensure outputs/ directory exists."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+# === Essential Utility Functions ===
+def ensure_output_directory_exists() -> None:
+    """
+    Ensure that the model output directory exists for saving trained artifacts.
+    
+    Creates the output directory structure if it does not already exist,
+    preventing file I/O errors during model persistence operations.
+    """
+    os.makedirs(MODEL_OUTPUT_DIR, exist_ok=True)
 
 
-def set_seed(seed: int = 42) -> None:
-    """Set random seed for reproducibility."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+def configure_reproducible_training_environment(random_seed: int = 42) -> None:
+    """
+    Configure deterministic training environment for reproducible model training results.
+    
+    Sets random seeds across all relevant libraries (Python, NumPy, PyTorch) to ensure
+    consistent training outcomes across multiple runs, which is essential for scientific
+    reproducibility and model comparison studies.
+    
+    Args:
+        random_seed (int, optional): Seed value for random number generators. 
+                                   Defaults to 42 for conventional consistency.
+    """
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+    torch.manual_seed(random_seed)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+        torch.cuda.manual_seed_all(random_seed)
 
 
-# === Data preparation ===
-def load_and_prepare_from_raw() -> pd.DataFrame:
+# === Data Preparation Pipeline Functions ===
+def load_and_prepare_raw_datasets() -> pd.DataFrame:
     """
-    Load and prepare dataset from raw CSVs.
-
-    Steps:
-        - Load raw emission & poverty data
-        - Merge by [province_id, year]
-        - Rename columns to standardized format
-        - Normalize using historical min/max
-        - Compute policy score (ANFIS target)
+    Load and comprehensively prepare dataset from raw CSV data sources.
+    
+    This function implements a complete data preprocessing pipeline that transforms
+    raw environmental and socioeconomic data into a normalized, analysis-ready format
+    suitable for machine learning model training.
+    
+    Data Processing Steps:
+        1. Load raw emission and poverty datasets from CSV files
+        2. Merge datasets on common keys [province_id, year]
+        3. Standardize column names to consistent format
+        4. Apply min-max normalization using historical boundaries
+        5. Calculate composite policy effectiveness scores for ANFIS training
+        
+    Returns:
+        pd.DataFrame: Fully preprocessed dataset with normalized features and
+                     calculated policy scores ready for model training
+                     
+    Raises:
+        FileNotFoundError: If required raw data files cannot be located
+        ValueError: If data merging fails due to incompatible schemas
+        
+    Note:
+        This function is computationally intensive and should be used when
+        complete data preprocessing is required from scratch.
     """
-    print("📥 Load data mentah...")
-    _, df_emisi, df_pov = load_csv_files()
+    print("📥 Loading raw environmental and socioeconomic datasets...")
+    _, emissions_df, poverty_df = load_dataset_files()
 
-    # Merge on province_id + year
-    df = pd.merge(
-        df_emisi, df_pov,
+    # Merge datasets on province and year dimensions
+    merged_dataset = pd.merge(
+        emissions_df, poverty_df,
         on=["province_id", "year"],
         how="inner",
-        suffixes=("_grk", "_pov")
+        suffixes=("_emissions", "_poverty")
     )
 
-    # Standardize columns
-    df["province"] = df["province_grk"]
-    df = df.rename(columns={
-        "Emisi_Bersih_Ton": "Emisi (Ton)",
-        "Persentase_kemiskinan": "Kemiskinan (%)"
+    # Standardize column nomenclature for consistency
+    merged_dataset["province"] = merged_dataset["province_emissions"]
+    merged_dataset = merged_dataset.rename(columns={
+        "Net_Emissions_Tons": "Emissions_Tons",
+        "Poverty_Rate_Percent": "Poverty_Rate_Percent"
     })
-    df = df[["province_id", "province", "year", "Emisi (Ton)", "Kemiskinan (%)"]]
+    merged_dataset = merged_dataset[["province_id", "province", "year", "Emissions_Tons", "Poverty_Rate_Percent"]]
 
-    # Normalize
-    min_e, max_e = df["Emisi (Ton)"].min(), df["Emisi (Ton)"].max()
-    min_p, max_p = df["Kemiskinan (%)"].min(), df["Kemiskinan (%)"].max()
-    df = normalize(df, min_e, max_e, min_p, max_p)
+    # Apply normalization using historical data boundaries
+    min_emissions, max_emissions = merged_dataset["Emissions_Tons"].min(), merged_dataset["Emissions_Tons"].max()
+    min_poverty, max_poverty = merged_dataset["Poverty_Rate_Percent"].min(), merged_dataset["Poverty_Rate_Percent"].max()
+    merged_dataset = normalize_features(merged_dataset, min_emissions, max_emissions, min_poverty, max_poverty)
 
-    # Policy score
-    df = calculate_policy_score(df)
-    return df
+    # Calculate composite policy effectiveness scores
+    merged_dataset = calculate_policy_effectiveness_score(merged_dataset)
+    return merged_dataset
 
 
-def load_and_prepare_from_com() -> pd.DataFrame:
+def load_and_prepare_processed_datasets() -> pd.DataFrame:
     """
-    Load and prepare dataset from processed CSV (scaled).
-
-    - Ensure required columns exist
-    - Add policy score if missing
+    Load and prepare dataset from preprocessed CSV files for expedited training.
+    
+    This function provides a streamlined approach to data loading when normalized
+    datasets are already available, significantly reducing preprocessing overhead
+    while ensuring data integrity and completeness for model training.
+    
+    Data Validation Steps:
+        1. Load preprocessed dataset with normalized features
+        2. Validate presence of required columns for training
+        3. Calculate policy effectiveness scores if missing
+        4. Return training-ready dataset
+        
+    Returns:
+        pd.DataFrame: Validated dataset with all required features for model training
+        
+    Raises:
+        ValueError: If essential columns are missing from the processed dataset
+        FileNotFoundError: If the processed data file cannot be located
+        
+    Note:
+        This function assumes data preprocessing has been completed previously
+        and focuses on validation and completeness checks.
     """
-    print("📥 Load data dari processed/training_data_scaled.csv...")
-    df, _, _ = load_csv_files()
+    print("📥 Loading preprocessed training dataset from scaled data files...")
+    processed_df, _, _ = load_dataset_files()
 
-    required = {
+    # Validate essential column presence for model training
+    required_columns = {
         "province_id", "province", "year",
-        "emisi_bersih_scaled", "poverty_scaled"
+        "scaled_net_emissions", "scaled_poverty_rate"
     }
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Kolom hilang: {missing}. Harus ada {required}")
+    missing_columns = required_columns - set(processed_df.columns)
+    if missing_columns:
+        raise ValueError(f"Missing essential columns: {missing_columns}. Required columns: {required_columns}")
 
-    if "skor_kebijakan" not in df.columns:
-        df = calculate_policy_score(df)
+    # Calculate policy effectiveness scores if not present
+    if "policy_effectiveness_score" not in processed_df.columns:
+        processed_df = calculate_policy_effectiveness_score(processed_df)
 
-    return df
-
-
-# === Training functions ===
-def train_and_eval_lstm(df: pd.DataFrame):
-    """Train and evaluate LSTM model."""
-    df_sorted = df.sort_values(["province_id", "year"])
-    X_seq, y_seq = create_lstm_sequences(df_sorted)
-
-    model = LSTMForecast()
-    print("🔁 Training model LSTM...")
-    model = train_lstm_model(model, X_seq, y_seq)
-
-    print("✅ Evaluasi LSTM:")
-    metrics = evaluate_lstm_model(model, X_seq, y_seq)
-    for k, v in metrics.items():
-        print(f"  {k}: {v:.4f}")
-
-    return model, metrics
+    return processed_df
 
 
-def train_and_eval_anfis(df: pd.DataFrame):
-    """Train and evaluate ANFIS model."""
-    X = torch.tensor(
-        df[["emisi_bersih_scaled", "poverty_scaled"]].values,
+# === Model Training and Evaluation Functions ===
+def train_and_evaluate_lstm_model(training_dataset: pd.DataFrame):
+    """
+    Train and comprehensively evaluate LSTM model for time series forecasting.
+    
+    This function implements the complete LSTM training pipeline, including data
+    sequencing, model instantiation, supervised learning, and performance evaluation
+    using multiple regression metrics.
+    
+    Args:
+        training_dataset (pd.DataFrame): Preprocessed dataset with normalized features
+                                       sorted by province and year for sequence creation
+                                       
+    Returns:
+        tuple: Trained LSTM model and comprehensive evaluation metrics dictionary
+               containing MAE, MSE, RMSE, and R² scores for model assessment
+               
+    Training Process:
+        1. Create temporal sequences suitable for LSTM architecture
+        2. Initialize LSTM model with optimal hyperparameters  
+        3. Execute supervised training with backpropagation
+        4. Evaluate model performance on training sequences
+        5. Return trained model with performance metrics
+    """
+    # Prepare sequential data structures for LSTM training
+    dataset_sorted = training_dataset.sort_values(["province_id", "year"])
+    input_sequences, target_sequences = create_lstm_sequences(dataset_sorted)
+
+    # Initialize and train LSTM forecasting model
+    lstm_forecaster = LSTMForecast()
+    print("🔁 Training LSTM model for time series forecasting...")
+    trained_lstm_model = train_lstm_model(lstm_forecaster, input_sequences, target_sequences)
+
+    # Comprehensive model evaluation
+    print("✅ Evaluating LSTM model performance:")
+    evaluation_metrics = evaluate_lstm_model(trained_lstm_model, input_sequences, target_sequences)
+    for metric_name, metric_value in evaluation_metrics.items():
+        print(f"  {metric_name}: {metric_value:.4f}")
+
+    return trained_lstm_model, evaluation_metrics
+
+
+def train_and_evaluate_anfis_model(training_dataset: pd.DataFrame):
+    """
+    Train and evaluate ANFIS model for policy effectiveness prediction.
+    
+    This function implements the complete ANFIS (Adaptive Neuro-Fuzzy Inference
+    System) training pipeline for predicting policy effectiveness scores based on
+    normalized environmental and socioeconomic indicators.
+    
+    Args:
+        training_dataset (pd.DataFrame): Dataset containing normalized features and
+                                       calculated policy effectiveness scores
+                                       
+    Returns:
+        tuple: Trained ANFIS model, evaluation metrics dictionary, and enhanced dataset
+               with any additional computed features
+               
+    Training Process:
+        1. Prepare input features (scaled_net_emissions, scaled_poverty_rate)
+        2. Extract policy effectiveness scores as training targets
+        3. Initialize ANFIS with Gaussian membership functions
+        4. Execute neuro-fuzzy training with gradient descent
+        5. Evaluate model accuracy using regression metrics
+    """
+    # Prepare input features for ANFIS training
+    input_features = torch.tensor(
+        training_dataset[["scaled_net_emissions", "scaled_poverty_rate"]].values,
         dtype=torch.float32
     )
-    if "skor_kebijakan" not in df.columns:
-        df = calculate_policy_score(df)
-    y = torch.tensor(
-        df["skor_kebijakan"].values.reshape(-1, 1),
+    
+    # Ensure policy effectiveness scores are available
+    if "policy_effectiveness_score" not in training_dataset.columns:
+        training_dataset = calculate_policy_effectiveness_score(training_dataset)
+    
+    target_scores = torch.tensor(
+        training_dataset["policy_effectiveness_score"].values.reshape(-1, 1),
         dtype=torch.float32
     )
 
-    model = ANFIS()
-    print("🔁 Training model ANFIS...")
-    model = train_anfis_model(model, X, y)
+    # Initialize and train ANFIS model
+    anfis_model = ANFIS()
+    print("🔁 Training ANFIS model for policy effectiveness prediction...")
+    trained_anfis_model = train_anfis_model(anfis_model, input_features, target_scores)
 
+    # Comprehensive model evaluation
     with torch.no_grad():
-        pred = model(X).numpy().squeeze()
-        y_np = y.numpy().squeeze()
-        mse = float(np.mean((pred - y_np) ** 2))
-        mae = float(np.mean(np.abs(pred - y_np)))
+        predicted_scores = trained_anfis_model(input_features).numpy().squeeze()
+        actual_scores = target_scores.numpy().squeeze()
+        
+        # Calculate evaluation metrics
+        mean_squared_error = float(np.mean((predicted_scores - actual_scores) ** 2))
+        mean_absolute_error = float(np.mean(np.abs(predicted_scores - actual_scores)))
 
-    print("✅ Evaluasi ANFIS:")
-    print(f"  mse: {mse:.6f}")
-    print(f"  mae: {mae:.6f}")
+    print("✅ Evaluating ANFIS model performance:")
+    print(f"  Mean Squared Error: {mean_squared_error:.6f}")
+    print(f"  Mean Absolute Error: {mean_absolute_error:.6f}")
 
-    return model, {"mse": mse, "mae": mae}, df
+    evaluation_metrics = {"mse": mean_squared_error, "mae": mean_absolute_error}
+    return trained_anfis_model, evaluation_metrics, training_dataset
 
 
-# === Main ===
-def main(mode: str) -> None:
-    ensure_outputs_dir()
-    set_seed(42)
+# === Main Training Pipeline Orchestration ===
+def execute_training_pipeline(training_mode: str) -> None:
+    """
+    Execute the complete machine learning model training pipeline.
+    
+    This function orchestrates the entire training workflow, from data preparation
+    through model training to artifact persistence, supporting both raw data
+    processing and preprocessed data workflows.
+    
+    Args:
+        training_mode (str): Training data source mode:
+                           - "from-raw": Complete preprocessing from raw CSV files
+                           - "from-processed": Use preprocessed normalized data
+                           
+    Raises:
+        ValueError: If an unsupported training mode is specified
+        
+    Training Pipeline:
+        1. Environment configuration for reproducibility
+        2. Data loading and preparation based on specified mode
+        3. LSTM model training and evaluation for time series forecasting
+        4. ANFIS model training and evaluation for policy effectiveness prediction
+        5. Model artifact persistence with comprehensive metadata
+        6. Training summary generation with performance metrics
+    """
+    # Initialize training environment
+    ensure_output_directory_exists()
+    configure_reproducible_training_environment(42)
 
-    # Data preparation
-    if mode == "from-raw":
-        df = load_and_prepare_from_raw()
-    elif mode == "from-com":
-        df = load_and_prepare_from_com()
+    # Data preparation based on training mode
+    if training_mode == "from-raw":
+        training_dataset = load_and_prepare_raw_datasets()
+    elif training_mode == "from-processed":
+        training_dataset = load_and_prepare_processed_datasets()
     else:
-        raise ValueError("Mode tidak dikenal. Gunakan 'from-raw' atau 'from-com'.")
+        raise ValueError("Unsupported training mode. Use 'from-raw' or 'from-processed'.")
 
-    # Train LSTM
-    lstm_model, lstm_metrics = train_and_eval_lstm(df)
+    # Train LSTM model for time series forecasting
+    lstm_model, lstm_metrics = train_and_evaluate_lstm_model(training_dataset)
 
-    # Train ANFIS
-    anfis_model, anfis_metrics, _ = train_and_eval_anfis(df)
+    # Train ANFIS model for policy effectiveness prediction  
+    anfis_model, anfis_metrics, _ = train_and_evaluate_anfis_model(training_dataset)
 
-    # Save models
-    torch.save(lstm_model.state_dict(), LSTM_MODEL_PATH)
-    torch.save(anfis_model.state_dict(), ANFIS_MODEL_PATH)
-    print(f"💾 Model disimpan: {LSTM_MODEL_PATH}, {ANFIS_MODEL_PATH}")
+    # Persist trained model artifacts
+    torch.save(lstm_model.state_dict(), TRAINED_LSTM_MODEL_PATH)
+    torch.save(anfis_model.state_dict(), TRAINED_ANFIS_MODEL_PATH)
+    print(f"💾 Trained models saved: {TRAINED_LSTM_MODEL_PATH}, {TRAINED_ANFIS_MODEL_PATH}")
 
-    # Save training summary
-    summary = {
-        "mode": mode,
-        **{f"lstm_{k}": v for k, v in lstm_metrics.items()},
-        **{f"anfis_{k}": v for k, v in anfis_metrics.items()},
+    # Generate comprehensive training summary
+    training_summary = {
+        "training_mode": training_mode,
+        **{f"lstm_{metric}": value for metric, value in lstm_metrics.items()},
+        **{f"anfis_{metric}": value for metric, value in anfis_metrics.items()},
     }
-    pd.DataFrame([summary]).to_csv(
-        os.path.join(OUTPUT_DIR, "training_summary.csv"), index=False
-    )
-    print("📑 Ringkasan metrik disimpan: outputs/training_summary.csv")
+    
+    summary_dataframe = pd.DataFrame([training_summary])
+    summary_path = os.path.join(MODEL_OUTPUT_DIR, "training_summary.csv")
+    summary_dataframe.to_csv(summary_path, index=False)
+    print(f"📑 Training metrics summary saved: {summary_path}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--mode", type=str, default="from-com",
-        help="Data loading mode: 'from-com' (processed) / 'from-raw' (raw merge)"
+    argument_parser = argparse.ArgumentParser(
+        description="Decision Support System Model Training Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Training Mode Options:
+  from-raw        Build complete dataset from raw CSV files with full preprocessing
+  from-processed  Use preprocessed normalized dataset for expedited training
+
+Example Usage:
+  python main.py --mode from-processed
+  python main.py --mode from-raw
+        """
     )
-    args = parser.parse_args()
-    main(args.mode)
+    argument_parser.add_argument(
+        "--mode", 
+        type=str, 
+        default="from-processed",
+        choices=["from-processed", "from-raw"],
+        help="Data loading and preprocessing mode (default: from-processed)"
+    )
+    
+    parsed_arguments = argument_parser.parse_args()
+    execute_training_pipeline(parsed_arguments.mode)

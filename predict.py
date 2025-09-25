@@ -35,11 +35,11 @@ import pandas as pd
 import torch
 
 from config import (
-    LSTM_MODEL_PATH,
-    ANFIS_MODEL_PATH,
-    LATEST_COMBINED_CSV,
-    OUTPUT_DIR,
-    load_csv_files,
+    TRAINED_LSTM_MODEL_PATH,
+    TRAINED_ANFIS_MODEL_PATH,
+    PREDICTED_COMBINED_CSV,
+    MODEL_OUTPUT_DIR,
+    load_dataset_files,
 )
 
 from dataprep.province_reference import get_province_code
@@ -50,7 +50,7 @@ from models.anfis_model import ANFIS
 # === Utilities ===
 def ensure_outputs_dir() -> None:
     """Ensure outputs/ directory exists."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(MODEL_OUTPUT_DIR, exist_ok=True)
 
 
 def set_seed(seed: int = 42) -> None:
@@ -70,28 +70,28 @@ def load_minmax_from_raw() -> tuple[pd.DataFrame, tuple[float, float, float, flo
     Returns:
         tuple:
             - DataFrame (raw merged data 2010–2020)
-            - (min_emisi, max_emisi, min_pov, max_pov)
+            - (min_emissions, max_emissions, min_poverty, max_poverty)
     """
-    _, df_emisi, df_pov = load_csv_files()
+    _, df_emissions, df_poverty = load_dataset_files()
     df_raw = pd.merge(
-        df_emisi, df_pov,
+        df_emissions, df_poverty,
         on=["province_id", "year"],
         how="inner",
-        suffixes=("_grk", "_pov")
+        suffixes=("_emissions", "_poverty")
     )
 
-    df_raw["province"] = df_raw["province_grk"]
+    df_raw["province"] = df_raw["province_emissions"]
     df_raw = df_raw.rename(columns={
-        "Emisi_Bersih_Ton": "Emisi (Ton)",
-        "Persentase_kemiskinan": "Kemiskinan (%)"
+        "Net_Emissions_Tons": "Emissions_Tons",
+        "Poverty_Rate_Percent": "Poverty_Rate_Percent"
     })
-    df_raw = df_raw[["province_id", "province", "year", "Emisi (Ton)", "Kemiskinan (%)"]]
+    df_raw = df_raw[["province_id", "province", "year", "Emissions_Tons", "Poverty_Rate_Percent"]]
 
     return df_raw, (
-        df_raw["Emisi (Ton)"].min(),
-        df_raw["Emisi (Ton)"].max(),
-        df_raw["Kemiskinan (%)"].min(),
-        df_raw["Kemiskinan (%)"].max(),
+        df_raw["Emissions_Tons"].min(),
+        df_raw["Emissions_Tons"].max(),
+        df_raw["Poverty_Rate_Percent"].min(),
+        df_raw["Poverty_Rate_Percent"].max(),
     )
 
 
@@ -100,23 +100,23 @@ def get_scaled_base_dataframe(
 ) -> pd.DataFrame:
     """
     Return scaled dataframe with columns:
-    [province_id, province, year, emisi_bersih_scaled, poverty_scaled].
+    [province_id, province, year, scaled_net_emissions, scaled_poverty_rate].
 
     If processed data is available, use that.
     Otherwise normalize from raw with given minmax.
     """
     if df_com is not None and not df_com.empty:
-        required = {"province_id", "province", "year", "emisi_bersih_scaled", "poverty_scaled"}
+        required = {"province_id", "province", "year", "scaled_net_emissions", "scaled_poverty_rate"}
         missing = required - set(df_com.columns)
         if missing:
-            raise ValueError(f"Kolom hilang di processed CSV: {missing}")
+            raise ValueError(f"Missing columns in processed CSV: {missing}")
         return df_com[list(required)].copy()
 
-    min_e, max_e, min_p, max_p = minmax
+    min_emissions, max_emissions, min_poverty, max_poverty = minmax
     df_base = df_raw.copy()
-    df_base["emisi_bersih_scaled"] = (df_base["Emisi (Ton)"] - min_e) / (max_e - min_e)
-    df_base["poverty_scaled"] = (df_base["Kemiskinan (%)"] - min_p) / (max_p - min_p)
-    return df_base[["province_id", "province", "year", "emisi_bersih_scaled", "poverty_scaled"]]
+    df_base["scaled_net_emissions"] = (df_base["Emissions_Tons"] - min_emissions) / (max_emissions - min_emissions)
+    df_base["scaled_poverty_rate"] = (df_base["Poverty_Rate_Percent"] - min_poverty) / (max_poverty - min_poverty)
+    return df_base[["province_id", "province", "year", "scaled_net_emissions", "scaled_poverty_rate"]]
 
 
 def build_last_sequence(df_base: pd.DataFrame, pid: int, seq_len=3):
@@ -135,7 +135,7 @@ def build_last_sequence(df_base: pd.DataFrame, pid: int, seq_len=3):
     if sub.empty:
         return None, None
     
-    values = sub[["emisi_bersih_scaled", "poverty_scaled"]].values
+    values = sub[["scaled_net_emissions", "scaled_poverty_rate"]].values
     if len(values) < seq_len:
         return None, sub["province"].iloc[0] if "province" in sub.columns else None
     
@@ -144,12 +144,12 @@ def build_last_sequence(df_base: pd.DataFrame, pid: int, seq_len=3):
     return last_seq, province_name
 
 
-def inverse_scale(pred_e: float, pred_p: float, minmax: tuple[float, float, float, float]) -> tuple[float, float]:
+def inverse_scale(pred_emissions: float, pred_poverty: float, minmax: tuple[float, float, float, float]) -> tuple[float, float]:
     """Inverse scale predictions back to original units."""
-    min_e, max_e, min_p, max_p = minmax
+    min_emissions, max_emissions, min_poverty, max_poverty = minmax
     return (
-        pred_e * (max_e - min_e) + min_e,
-        pred_p * (max_p - min_p) + min_p,
+        pred_emissions * (max_emissions - min_emissions) + min_emissions,
+        pred_poverty * (max_poverty - min_poverty) + min_poverty,
     )
 
 
@@ -162,9 +162,9 @@ def compute_tax_from_score(score: float) -> float:
 def run_prediction(
     start_year: int,
     end_year: int,
-    lstm_path: str = LSTM_MODEL_PATH,
-    anfis_path: str = ANFIS_MODEL_PATH,
-    output_csv: str = LATEST_COMBINED_CSV,
+    lstm_path: str = TRAINED_LSTM_MODEL_PATH,
+    anfis_path: str = TRAINED_ANFIS_MODEL_PATH,
+    output_csv: str = PREDICTED_COMBINED_CSV,
     seq_len: int = 3,
 ) -> None:
     """Run full prediction pipeline (historical + future)."""
@@ -172,7 +172,7 @@ def run_prediction(
     set_seed(42)
 
     # 1) Load data
-    df_com, _, _ = load_csv_files()
+    df_com, _, _ = load_dataset_files()
     df_raw, minmax = load_minmax_from_raw()
     df_base = get_scaled_base_dataframe(df_com, df_raw, minmax)
 
@@ -190,15 +190,15 @@ def run_prediction(
     hist = df_raw.copy()
     hist["province_code"] = hist["province"].apply(get_province_code)
 
-    min_e, max_e, min_p, max_p = minmax
-    hist["emisi_bersih_scaled"] = (hist["Emisi (Ton)"] - min_e) / (max_e - min_e)
-    hist["poverty_scaled"] = (hist["Kemiskinan (%)"] - min_p) / (max_p - min_p)
+    min_emissions, max_emissions, min_poverty, max_poverty = minmax
+    hist["scaled_net_emissions"] = (hist["Emissions_Tons"] - min_emissions) / (max_emissions - min_emissions)
+    hist["scaled_poverty_rate"] = (hist["Poverty_Rate_Percent"] - min_poverty) / (max_poverty - min_poverty)
 
-    X_hist = torch.tensor(hist[["emisi_bersih_scaled", "poverty_scaled"]].values, dtype=torch.float32)
+    X_hist = torch.tensor(hist[["scaled_net_emissions", "scaled_poverty_rate"]].values, dtype=torch.float32)
     with torch.no_grad():
-        skor_hist = anfis_model(X_hist).cpu().numpy().squeeze()
-    hist["Skor Pajak"] = skor_hist
-    hist["Tarif Pajak"] = np.maximum(30.0, skor_hist * 150.0)
+        score_hist = anfis_model(X_hist).cpu().numpy().squeeze()
+    hist["Tax_Score"] = score_hist
+    hist["Tax_Rate"] = np.maximum(30.0, score_hist * 150.0)
 
     # 4) Future predictions
     future_rows = []
@@ -212,49 +212,49 @@ def run_prediction(
             with torch.no_grad():
                 pred_scaled = lstm_model(input_seq).cpu().numpy().squeeze()
 
-            e_scaled, p_scaled = float(np.clip(pred_scaled[0], 0.0, 1.0)), float(np.clip(pred_scaled[1], 0.0, 1.0))
-            emisi_pred, pov_pred = inverse_scale(e_scaled, p_scaled, minmax)
+            emissions_scaled, poverty_scaled = float(np.clip(pred_scaled[0], 0.0, 1.0)), float(np.clip(pred_scaled[1], 0.0, 1.0))
+            emissions_pred, poverty_pred = inverse_scale(emissions_scaled, poverty_scaled, minmax)
 
             with torch.no_grad():
-                skor = float(anfis_model(torch.tensor([[e_scaled, p_scaled]], dtype=torch.float32).to(device)).cpu().item())
-            tarif = compute_tax_from_score(skor)
+                score = float(anfis_model(torch.tensor([[emissions_scaled, poverty_scaled]], dtype=torch.float32).to(device)).cpu().item())
+            tax_rate = compute_tax_from_score(score)
 
             future_rows.append({
                 "province_code": get_province_code(province_name),
                 "province": province_name,
                 "province_id": pid,
                 "year": yr,
-                "Emisi (Ton)": emisi_pred,
-                "Kemiskinan (%)": pov_pred,
-                "Skor Pajak": skor,
-                "Tarif Pajak": tarif,
+                "Emissions_Tons": emissions_pred,
+                "Poverty_Rate_Percent": poverty_pred,
+                "Tax_Score": score,
+                "Tax_Rate": tax_rate,
             })
 
             # rolling update
-            new_input = np.vstack([input_seq[0, 1:].cpu().numpy(), np.array([e_scaled, p_scaled])])
+            new_input = np.vstack([input_seq[0, 1:].cpu().numpy(), np.array([emissions_scaled, poverty_scaled])])
             input_seq = torch.tensor([new_input], dtype=torch.float32).to(device)
 
     df_future = pd.DataFrame(future_rows)
 
     # 5) Combine + revenue calculation
     combined = pd.concat([
-        hist[["province_code", "province", "province_id", "year", "Emisi (Ton)", "Kemiskinan (%)", "Skor Pajak", "Tarif Pajak"]],
+        hist[["province_code", "province", "province_id", "year", "Emissions_Tons", "Poverty_Rate_Percent", "Tax_Score", "Tax_Rate"]],
         df_future,
     ], ignore_index=True).sort_values(["province_code", "year"]).reset_index(drop=True)
 
-    combined["Tarif Pajak (Rp/Ton)"] = combined["Tarif Pajak"] * 1000.0
-    combined["Penerimaan Negara (Rp)"] = combined["Tarif Pajak (Rp/Ton)"] * combined["Emisi (Ton)"]
-    combined["Penerimaan Negara (T)"] = combined["Penerimaan Negara (Rp)"] / 1_000_000_000_000
-    combined["Total Nasional (T)"] = combined.groupby("year")["Penerimaan Negara (T)"].transform("sum")
-    combined["Kontribusi (%)"] = (combined["Penerimaan Negara (T)"] / combined["Total Nasional (T)"]) * 100.0
+    combined["Tax_Rate_Rp_Per_Ton"] = combined["Tax_Rate"] * 1000.0
+    combined["Government_Revenue_Rp"] = combined["Tax_Rate_Rp_Per_Ton"] * combined["Emissions_Tons"]
+    combined["Government_Revenue_Trillions"] = combined["Government_Revenue_Rp"] / 1_000_000_000_000
+    combined["National_Total_Trillions"] = combined.groupby("year")["Government_Revenue_Trillions"].transform("sum")
+    combined["Contribution_Percent"] = (combined["Government_Revenue_Trillions"] / combined["National_Total_Trillions"]) * 100.0
 
     # 6) Save
     combined.to_csv(output_csv, index=False)
 
     # 7) Summary log
-    print(f"✅ File gabungan disimpan: {output_csv}")
-    print(f"Provinsi unik: {combined['province_code'].nunique()}")
-    print(f"Tahun data: {combined['year'].min()} - {combined['year'].max()}")
+    print(f"✅ Combined file saved: {output_csv}")
+    print(f"Unique provinces: {combined['province_code'].nunique()}")
+    print(f"Data years: {combined['year'].min()} - {combined['year'].max()}")
 
 
 # === CLI ===
@@ -262,9 +262,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run DSS future prediction pipeline")
     parser.add_argument("--start_year", type=int, default=2021)
     parser.add_argument("--end_year", type=int, default=2030)
-    parser.add_argument("--lstm_path", type=str, default=LSTM_MODEL_PATH)
-    parser.add_argument("--anfis_path", type=str, default=ANFIS_MODEL_PATH)
-    parser.add_argument("--output_csv", type=str, default=LATEST_COMBINED_CSV)
+    parser.add_argument("--lstm_path", type=str, default=TRAINED_LSTM_MODEL_PATH)
+    parser.add_argument("--anfis_path", type=str, default=TRAINED_ANFIS_MODEL_PATH)
+    parser.add_argument("--output_csv", type=str, default=PREDICTED_COMBINED_CSV)
     parser.add_argument("--sequence_length", type=int, default=3)
     return parser.parse_args()
 
