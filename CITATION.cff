@@ -1,0 +1,52 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+- family-names: Ramadhan
+  given-names: Teuku Hafiez
+  orcid: "https://orcid.org/0009-0002-5290-9673"
+  affiliation: "Universitas Bina Nusantara"
+  email: "teuku.ramadhan@binus.ac.id"
+title: "DSS Adaptive Carbon Tax Indonesia: Intelligent Policy Optimization System"
+abstract: "A comprehensive Decision Support System (DSS) implementing intelligent adaptive carbon taxation through hybrid machine learning models (LSTM + ANFIS). The system provides evidence-based analysis tools for carbon tax policy evaluation across Indonesian provinces, featuring dynamic tax rate optimization based on emission performance and socioeconomic conditions. This revolutionary approach replaces static flat-rate carbon taxes with context-aware policy instruments that maximize environmental effectiveness while protecting social equity through poverty-sensitive adjustments."
+repository-code: "https://github.com/popon0/dss-climate-poverty-idn"
+url: "https://github.com/popon0/dss-climate-poverty-idn"
+version: "v1.0.2"
+date-released: "2025-09-25"
+license: Apache-2.0
+keywords:
+  - "adaptive carbon tax"
+  - "intelligent taxation"
+  - "climate policy optimization"
+  - "ANFIS carbon tax"
+  - "dynamic tax rates"
+  - "environmental economics"
+  - "poverty-sensitive taxation"
+  - "policy optimization"
+  - "machine learning taxation"
+  - "Indonesia carbon policy"
+  - "sustainable taxation"
+  - "adaptive policy instruments"
+  - "neuro-fuzzy taxation"
+  - "climate equity analysis"
+  - "smart environmental policy"
+  - "decision support system"
+  - "LSTM forecasting"
+  - "streamlit dashboard"
+  - "academic research"
+contact:
+  - family-names: Ramadhan
+    given-names: Teuku Hafiez
+    email: "teuku.ramadhan@binus.ac.id"
+preferred-citation:
+  type: software
+  authors:
+  - family-names: Ramadhan
+    given-names: Teuku Hafiez
+  title: "DSS Adaptive Carbon Tax Indonesia: Intelligent Policy Optimization System"
+  version: "v1.0.2"
+  url: "https://github.com/popon0/dss-climate-poverty-idn"
+  year: 2025
+  publisher:
+    name: "GitHub"
+  doi: "10.5281/zenodo.17202928"
