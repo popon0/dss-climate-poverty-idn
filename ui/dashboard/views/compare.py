@@ -109,18 +109,18 @@ def render_compare(
             (df["year"] >= year_range[0]) & (df["year"] <= year_range[1])
             & (df["province"].isin(provinces))
         ].copy()
-        agg = (
-            scope.groupby("province", as_index=False)
-            .agg({
-                "Emissions_Tons": "sum",
-                "Government_Revenue_Trillions": "sum",
-                "Poverty_Rate_Percent": "mean",
-                "Tax_Rate": "mean",
-            })
-        )
-        corr = agg[
+        
+        # Use raw data (province-year) without aggregation
+        filtered = scope[
             ["Emissions_Tons", "Government_Revenue_Trillions", "Poverty_Rate_Percent", "Tax_Rate"]
-        ].corr("pearson")
+        ].dropna()
+
+        if len(filtered) >= 2:
+            corr = filtered.corr(method="pearson")
+        else:
+            st.warning("Not enough data points to compute Pearson correlation.")
+            corr = pd.DataFrame()  # Empty placeholder
+
         fig_corr = px.imshow(
             corr, text_auto=".2f", zmin=-1, zmax=1,
             color_continuous_scale=TH.diverging, labels={"color": "Correlation Coefficient (ρ)"}
@@ -214,3 +214,4 @@ def render_compare(
             polar=dict(radialaxis=dict(visible=True, range=[0, 1]))
         )
         st.plotly_chart(compact(fig_r, TH, h=320), use_container_width=True)
+
